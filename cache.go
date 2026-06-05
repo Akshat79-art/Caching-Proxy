@@ -1,7 +1,11 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
+	"log"
 	"net/http"
+	"net/http/httputil"
 	"sync"
 	"time"
 )
@@ -69,7 +73,7 @@ func (ri *ResponseInterceptor) Write(p []byte) (int, error) {
 	return ri.ResponseWriter.Write(p)
 }
 
-func cacheMiddleware(proxy *httputil.RevereProxy, cache *CacheManager) http.HandlerFunc {
+func cacheMiddleware(proxy *httputil.ReverseProxy, cache *CacheManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		
 		if r.Method != http.MethodGet {
@@ -97,7 +101,7 @@ func cacheMiddleware(proxy *httputil.RevereProxy, cache *CacheManager) http.Hand
 		proxy.ServeHTTP(interceptor, r)
 
 		if interceptor.statusCode <= 300 && interceptor.statusCode >= 200 {
-			cacheItem = &CacheItem{
+			cacheItem := &CacheItem{
 				responseBody: interceptor.body.Bytes(),
 				headers:      interceptor.Header(),
 				statusCode:   interceptor.statusCode,
