@@ -5,16 +5,17 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 )
 
-
-func startProxy(port string, urlString string) {
+func startProxy(port string, urlString string, cacheSize int) {
 
 	port = ":" + port
-	
+
 	parsedUrl, err := url.Parse(urlString)
 	if err != nil {
 		fmt.Println("Error: ", err)
+		os.Exit(1)
 	}
 
 	proxy := httputil.NewSingleHostReverseProxy(parsedUrl)
@@ -24,11 +25,12 @@ func startProxy(port string, urlString string) {
 		req.Host = parsedUrl.Host
 	}
 
-	cacheManager := NewCacheManager()
+	cacheManager := NewCacheManager(cacheSize)
 
 	fmt.Println("Server is running on port ", port)
 	er := http.ListenAndServe(port, cacheMiddleware(proxy, cacheManager))
 	if er != nil {
 		fmt.Println("Error: ", er)
+		os.Exit(1)
 	}
 }

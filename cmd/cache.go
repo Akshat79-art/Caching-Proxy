@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"bytes"
-	"fmt"
+	"container/list"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -18,8 +18,15 @@ type CacheItem struct {
 }
 
 type CacheManager struct {
-	storage map[string]CacheItem
-	mu      sync.RWMutex
+	storage map[string]*list.Element
+	list    *list.List
+	mu      sync.Mutex
+	maxSize int
+}
+
+type CacheEntry struct {
+	key  string
+	item CacheItem
 }
 
 type ResponseInterceptor struct {
@@ -28,31 +35,51 @@ type ResponseInterceptor struct {
 	statusCode int
 }
 
-func NewCacheManager() *CacheManager {
+func NewCacheManager(maxSize int) *CacheManager {
 	return &CacheManager{
-		storage: make(map[string]CacheItem),
+		storage: make(map[string]*list.Element),
+		list:    list.New(),
+		maxSize: maxSize,
 	}
 }
 
 func (cMan *CacheManager) Get(key string) (*CacheItem, bool) {
-	cMan.mu.RLock()
-	defer cMan.mu.RUnlock()
+	cMan.mu.Lock()
+	defer cMan.mu.Unlock()
 
 	item, found := cMan.storage[key]
 	if !found {
 		return nil, false
 	}
-	if time.Now().After(item.expiration) {
+	entryInCache := item.Value.(*CacheEntry)
+	if time.Now().After(entryInCache.item.expiration) {
+		cMan.list.Remove(item)
 		delete(cMan.storage, key)
 		return nil, false
 	}
-	return &item, true
+	cMan.list.MoveToFront(item)
+	return &entryInCache.item, true
 }
 
 func (cMan *CacheManager) Set(key string, item *CacheItem) {
 	cMan.mu.Lock()
 	defer cMan.mu.Unlock()
-	cMan.storage[key] = *item
+
+	if elem, found := cMan.storage[key]; found {
+		cMan.list.MoveToFront(elem)
+		elem.Value.(*CacheEntry).item = *item
+		return
+	}
+
+	if cMan.list.Len() >= cMan.maxSize {
+		lruElem := cMan.list.Back()
+		cMan.list.Remove(lruElem)
+		delete(cMan.storage, lruElem.Value.(*CacheEntry).key)
+	}
+
+	entry := &CacheEntry{key: key, item: *item}
+	newEle := cMan.list.PushFront(entry)
+	cMan.storage[key] = newEle
 }
 
 func NewResponseInterceptor(w http.ResponseWriter) *ResponseInterceptor {
@@ -75,14 +102,14 @@ func (ri *ResponseInterceptor) Write(p []byte) (int, error) {
 
 func cacheMiddleware(proxy *httputil.ReverseProxy, cache *CacheManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		
+
 		if r.Method != http.MethodGet {
 			proxy.ServeHTTP(w, r)
 			return
 		}
 
 		cacheKey := r.URL.String()
-		
+
 		if item, found := cache.Get(cacheKey); found {
 			log.Printf("Cache hit for %s", cacheKey)
 			w.Header().Set("X-Cache", "HIT")
@@ -94,13 +121,13 @@ func cacheMiddleware(proxy *httputil.ReverseProxy, cache *CacheManager) http.Han
 			return
 		}
 
-		fmt.Println("CACHE MISS for", cacheKey)
+		log.Printf("CACHE MISS for %s", cacheKey)
 
 		interceptor := NewResponseInterceptor(w)
 		interceptor.Header().Set("X-Cache", "MISS")
 		proxy.ServeHTTP(interceptor, r)
 
-		if interceptor.statusCode <= 300 && interceptor.statusCode >= 200 {
+		if interceptor.statusCode >= 200 && interceptor.statusCode < 300 {
 			cacheItem := &CacheItem{
 				responseBody: interceptor.body.Bytes(),
 				headers:      interceptor.Header(),
@@ -116,5 +143,6 @@ func cacheMiddleware(proxy *httputil.ReverseProxy, cache *CacheManager) http.Han
 func clearCache(cache *CacheManager) {
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
-	cache.storage = make(map[string]CacheItem)
+	cache.list.Init()
+	cache.storage = make(map[string]*list.Element)
 }

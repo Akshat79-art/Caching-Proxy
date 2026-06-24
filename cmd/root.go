@@ -1,6 +1,5 @@
 /*
-Copyright © 2026 NAME HERE <EMAIL ADDRESS>
-
+Copyright © 2026 Akshat Surana
 */
 package cmd
 
@@ -13,6 +12,9 @@ import (
 
 var port string
 var origin string
+var cacheSize int
+
+const maxCacheSize = 1000
 
 var rootCmd = &cobra.Command{
 	Use:   "caching-proxy",
@@ -23,7 +25,7 @@ examples and usage of using your application. For example:
 Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
-	
+
 	Run: func(cmd *cobra.Command, args []string) {
 		if origin == "" {
 			fmt.Println("Error: --origin flag is required")
@@ -31,17 +33,28 @@ to quickly create a Cobra application.`,
 			cmd.Help()
 			os.Exit(1)
 		}
-		startProxy(port, origin)
+		if cacheSize <= 0 {
+			fmt.Println("Error: cache size cannot be or less than 0")
+
+			cmd.Help()
+			os.Exit(1)
+		} else if cacheSize > maxCacheSize {
+			fmt.Println("Cache size exceeded max cache size of", maxCacheSize)
+			fmt.Println("Cache size is now set to be the max cache size.")
+
+			cacheSize = maxCacheSize
+		}
+		startProxy(port, origin, cacheSize)
 	},
 }
 
-var clearCacheCmd = &cache.Command{
-	Use: "cache-clear",
+var clearCacheCmd = &cobra.Command{
+	Use:   "cache-clear",
 	Short: "Clears the cache.",
-	Long: "Clears the cache.",
+	Long:  "Clears the cache.",
 
 	Run: func(cmd *cobra.Command, args []string) {
-		clearCache()
+		// clearCache()
 	},
 }
 
@@ -56,10 +69,9 @@ func Execute() {
 
 func init() {
 
-	rootCmd.Flags().StringVarP(&port, "port", "p", "8000", "Port on which to run the proxy server")
-	rootCmd.Flags().StringVarP(&origin, "origin", "o", "", "The URL of the server to proxy to")
+	rootCmd.Flags().StringVarP(&port, "port", "p", "8000", "Port on which to run the proxy server.")
+	rootCmd.Flags().StringVarP(&origin, "origin", "o", "", "The URL of the server that proxy will listen to.")
+	rootCmd.Flags().IntVarP(&cacheSize, "maxsize", "ms", maxCacheSize, "Maximum size of the cache.")
 
-	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	rootCmd.AddCommand(clearCacheCmd)
 }
-
-
