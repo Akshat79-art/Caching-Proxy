@@ -27,8 +27,15 @@ func startProxy(port string, urlString string, cacheSize int) {
 
 	cacheManager := NewCacheManager(cacheSize)
 
+	mux := http.NewServeMux()
+	mux.Handle("/", cacheMiddleware(proxy, cacheManager))
+	mux.HandleFunc("/admin/clear-cache", func(w http.ResponseWriter, r *http.Request) {
+		clearCache(cacheManager)
+		w.Write([]byte("Cache cleared"))
+	})
+
 	fmt.Println("Server is running on port ", port)
-	er := http.ListenAndServe(port, cacheMiddleware(proxy, cacheManager))
+	er := http.ListenAndServe(port, mux)
 	if er != nil {
 		fmt.Println("Error: ", er)
 		os.Exit(1)

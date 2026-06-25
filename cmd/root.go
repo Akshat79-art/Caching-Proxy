@@ -5,7 +5,10 @@ package cmd
 
 import (
 	"fmt"
+	"io"
+	"net/http"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -54,7 +57,29 @@ var clearCacheCmd = &cobra.Command{
 	Long:  "Clears the cache.",
 
 	Run: func(cmd *cobra.Command, args []string) {
-		// clearCache()
+		cachePort, _ := cmd.Flags().GetString("port")
+		target := fmt.Sprintf("http://localhost:%s/admin/clear-cache", cachePort)
+
+		resp, err := http.Post(target, "text/plain", nil)
+		if err != nil {
+			if strings.Contains(err.Error(), "connection refused") ||
+				strings.Contains(err.Error(), "No connection could be made") {
+				fmt.Printf("No proxy found on port %s. Is it running?\n", cachePort)
+			} else {
+				fmt.Printf("Error: %v\n", err)
+			}
+			os.Exit(1)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == 404 {
+			fmt.Println("This proxy does not support cache-clear.")
+			os.Exit(1)
+		}
+
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Println(string(body))
+
 	},
 }
 
@@ -71,7 +96,9 @@ func init() {
 
 	rootCmd.Flags().StringVarP(&port, "port", "p", "8000", "Port on which to run the proxy server.")
 	rootCmd.Flags().StringVarP(&origin, "origin", "o", "", "The URL of the server that proxy will listen to.")
-	rootCmd.Flags().IntVarP(&cacheSize, "maxsize", "ms", maxCacheSize, "Maximum size of the cache.")
+	rootCmd.Flags().IntVarP(&cacheSize, "maxsize", "s", maxCacheSize, "Maximum size of the cache.")
+
+	clearCacheCmd.Flags().StringP("port", "p", "8000", "Port of the running proxy")
 
 	rootCmd.AddCommand(clearCacheCmd)
 }
