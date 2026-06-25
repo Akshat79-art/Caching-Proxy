@@ -111,11 +111,11 @@ func cacheMiddleware(proxy *httputil.ReverseProxy, cache *CacheManager) http.Han
 		cacheKey := r.URL.String()
 
 		if item, found := cache.Get(cacheKey); found {
-			log.Printf("Cache hit for %s", cacheKey)
-			w.Header().Set("X-Cache", "HIT")
+			log.Printf("CACHE HIT for %s", cacheKey)
 			for k, v := range item.headers {
 				w.Header()[k] = v
 			}
+			w.Header().Set("X-Cache", "HIT")
 			w.WriteHeader(item.statusCode)
 			w.Write(item.responseBody)
 			return
@@ -127,7 +127,8 @@ func cacheMiddleware(proxy *httputil.ReverseProxy, cache *CacheManager) http.Han
 		interceptor.Header().Set("X-Cache", "MISS")
 		proxy.ServeHTTP(interceptor, r)
 
-		if interceptor.statusCode >= 200 && interceptor.statusCode < 300 {
+		if (interceptor.statusCode >= 200 && interceptor.statusCode < 300) &&
+			(r.Header.Get("Authorization") == "") && (interceptor.Header().Get("Set-Cookie") == "") {
 			cacheItem := &CacheItem{
 				responseBody: interceptor.body.Bytes(),
 				headers:      interceptor.Header(),
@@ -136,7 +137,6 @@ func cacheMiddleware(proxy *httputil.ReverseProxy, cache *CacheManager) http.Han
 			}
 			cache.Set(cacheKey, cacheItem)
 		}
-
 	}
 }
 
