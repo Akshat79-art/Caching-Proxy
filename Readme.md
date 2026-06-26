@@ -197,4 +197,4 @@ curl -i http://localhost:8000/get
 This project is deployed on [Render's free tier](https://render.com). Note that free instances spin down after periods of inactivity, so the cache is lost on wake.
 
 
-This project was made with inspiration from [Roadmap](https://roadmap.sh/projects/caching-server) !! 
+This project was made with inspiration from [Roadmap](https://roadmap.sh/projects/caching-server).
