@@ -21,13 +21,18 @@ const maxCacheSize = 1000
 
 var rootCmd = &cobra.Command{
 	Use:   "caching-proxy",
-	Short: "A brief description of your application",
-	Long: `A longer description that spans multiple lines and likely contains
-examples and usage of using your application. For example:
+	Short: "Starts the proxy.",
+	Long: `caching-proxy is an HTTP reverse proxy with an in-memory cache.
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+It forwards HTTP requests to a specified origin server and caches
+the responses. Repeated requests for the same URL are served from
+cache, reducing latency and load on the origin.
+
+The proxy runs as a long-lived server. Use the cache-clear subcommand
+to flush the cache on a running instance.
+
+Example:
+  caching-proxy --port 8000 --origin https://httpbin.org --maxsize 500`,
 
 	Run: func(cmd *cobra.Command, args []string) {
 		if origin == "" {
@@ -54,7 +59,7 @@ to quickly create a Cobra application.`,
 var clearCacheCmd = &cobra.Command{
 	Use:   "cache-clear",
 	Short: "Clears the cache.",
-	Long:  "Clears the cache.",
+	Long:  "This functions takes in the port number on which the proxy is running, of whose cache needs to be cleared.",
 
 	Run: func(cmd *cobra.Command, args []string) {
 		cachePort, _ := cmd.Flags().GetString("port")
