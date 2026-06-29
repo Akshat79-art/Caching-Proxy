@@ -164,7 +164,7 @@ On each request:
   - GET requests first check the cache by URL key.
   - Cache hit: returns the cached response with X-Cache: HIT.
   - Cache miss: forwards the request to the origin via the proxy, then caches the response
-    if it meets all conditions (2xx status, no Authorization header on the request, no Set-Cookie header on the response).
+    if cacheDecision returns true.
 */
 func cacheMiddleware(proxy *httputil.ReverseProxy, cache *CacheManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

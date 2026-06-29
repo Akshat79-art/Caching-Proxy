@@ -7,6 +7,16 @@ import (
 	"time"
 )
 
+/*
+parseCacheControl takes in the headers in the format recieved from web
+and does the following operations on it:
+ 1. Splits the headers based on comma.
+ 2. For every header, it splits it based on "=" and stores in a temproary array.
+ 3. If the header :
+    3.1. Does not have a key, intialize it with empty string in map as value.
+    3.2. Has a key, store it in key value pair in map.
+ 4. Returns the map.
+*/
 func parseCacheControl(headers http.Header) map[string]string {
 
 	cacheHeaders := make(map[string]string)
@@ -25,6 +35,16 @@ func parseCacheControl(headers http.Header) map[string]string {
 	return cacheHeaders
 }
 
+/*
+ttlFromDirectives takes in the map made by parseCacheControl.
+Checks if it has:
+ 1. s-maxage header.
+ 2. max-age header.
+
+If it has either of those parameters,
+the time proxy caches the request response is taken from it.
+If not, we cache the response for 5 minutes.
+*/
 func ttlFromDirectives(cc map[string]string) time.Duration {
 
 	if value, ok := cc["s-maxage"]; ok {
@@ -39,6 +59,21 @@ func ttlFromDirectives(cc map[string]string) time.Duration {
 	return 5 * time.Minute
 }
 
+/*
+cacheDecision evaluates whether a response should be cached and determines its TTL.
+
+It checks the following conditions in order:
+  - Status code must be 2xx (200–299).
+  - Request must not contain an Authorization header (authenticated responses are not cached).
+  - Response must not contain a Set-Cookie header (user-specific responses are not cached).
+  - Cache-Control directives are checked:
+  - "no-store" and "private" prevent caching entirely.
+  - Falls back to 5 minutes if no Cache-Control header is present.
+
+Returns:
+  - bool: true if the response should be cached, false otherwise.
+  - time.Duration: how long the response should remain in the cache.
+*/
 func cacheDecision(statusCode int, req *http.Request, respHeaders http.Header) (bool, time.Duration) {
 
 	if (statusCode < 200 || statusCode >= 300) ||

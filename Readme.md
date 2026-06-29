@@ -89,8 +89,9 @@ Every HTTP API receives repeated requests for the same data. Without caching, th
 |---|---|---|
 | **Reverse Proxy** | A server that sits between clients and a backend, forwarding requests and returning responses. Go's `httputil.ReverseProxy` handles the low-level details like connection pooling and error handling. | I constructed a `ReverseProxy` directly using the `Rewrite` field (the modern, secure replacement for the deprecated `Director`). The `Rewrite` function rewrites the outbound URL to the origin, preserves the `Host` header, and forwards `X-Forwarded-*` headers so the origin sees the real client IP. |
 | **LRU Eviction** | When the cache reaches its size limit, the **L**east **R**ecently **U**sed entry is removed to make room for new ones. This keeps frequently accessed data in cache. | I used Go's `container/list` (a doubly linked list) combined with a `map[string]*list.Element`. Each cache access moves the item to the **front** of the list. When evicting, I remove from the **back** — that's the least recently used entry. Both operations are O(1). |
-| **TTL (Time To Live)** | Cached items expire after a fixed duration, ensuring stale data is eventually refreshed. | Each `CacheItem` stores an `expiration` timestamp set to `time.Now().Add(5 * time.Minute)`. On every `Get`, I check if the current time has passed the expiration. Expired items are removed from both the list and the map. |
+| **TTL (Time To Live)** | Cached items expire after a duration, ensuring stale data is eventually refreshed. TTL is determined by the origin's `Cache-Control` header. | The proxy respects the origin's `s-maxage` (priority) or `max-age` directives. If neither is present, it falls back to 5 minutes. On every `Get`, the expiration timestamp is checked and expired items are removed from the list and map. |
 | **Cache Key** | A unique identifier for each cached response. The same key must produce the same response. | Used `r.URL.String()`: The full request URL including query parameters. Two requests to `GET /api/users?page=1` and `GET /api/users?page=2` are cached separately. |
+| **Cache-Control Parsing** | The origin communicates freshness via `Cache-Control` headers, including `max-age`, `s-maxage`, `no-store`, `private`, and others. | `parseCacheControl()` in `cachepolicy.go` splits the header by comma and extracts directives into a `map[string]string`. `cacheDecision()` uses this map to apply caching rules: deny caching for `no-store` or `private`, and extract TTL from `s-maxage` (takes priority) or `max-age`. |
 | **X-Cache Header** | A standard header (`X-Cache: HIT` or `X-Cache: MISS`) that tells the client whether the response came from cache or the origin. Useful for debugging and monitoring. | On a hit, I set `X-Cache: HIT` on the response. On a miss, the middleware forwards the request and sets `X-Cache: MISS` on the outgoing request to the origin (which is captured and stored with the cached response). |
 | **Security Exclusion** | Authenticated responses should never be cached and served to other users. | I check for the `Authorization` header on the incoming request. If present, the response is forwarded but **not** cached. |
 | **Cookie Exclusion** | Responses containing `Set-Cookie` should not be cached, as cookies are user-specific. | I check for the `Set-Cookie` header on the origin's response. If present, the response is **not** stored in the cache. |
@@ -99,12 +100,13 @@ Every HTTP API receives repeated requests for the same data. Without caching, th
 ## Features
 
 - **In-memory LRU cache** with configurable size limit
-- **TTL-based expiration** - items expire after 5 minutes
+- **TTL-based expiration** — respects origin's `Cache-Control: max-age` / `s-maxage` headers; falls back to 5 minutes
+- **Cache-Control aware** — respects `no-store` and `private` directives; never caches when origin forbids it
 - **`X-Cache: HIT` / `X-Cache: MISS`** headers for debugging
 - **Admin endpoint** (`/admin/clear-cache`) to flush the cache at runtime
 - **`cache-clear`** CLI subcommand for convenience
-- **Security-aware** - skips caching for authenticated requests (`Authorization` header)
-- **Cookie-aware** - skips caching for responses with `Set-Cookie` headers
+- **Security-aware** — skips caching for authenticated requests (`Authorization` header)
+- **Cookie-aware** — skips caching for responses with `Set-Cookie` headers
 - **CLI flags** for port, origin, and cache size
 
 ## Prerequisites
@@ -131,7 +133,8 @@ caching-proxy/
 ├── cmd/
 │   ├── root.go          # CLI commands, flags, and validation
 │   ├── proxy.go         # Reverse proxy setup (Rewrite, ServeMux, admin route)
-│   └── cache.go         # LRU cache, ResponseInterceptor, middleware, cache-clear logic
+│   ├── cache.go         # LRU cache, ResponseInterceptor, middleware, cache-clear logic
+│   └── cachepolicy.go   # Cache-Control parsing and caching policy decisions
 ├── go.mod               # Go module definition
 ├── go.sum               # Dependency checksums
 ├── .gitignore
