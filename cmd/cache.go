@@ -193,16 +193,14 @@ func cacheMiddleware(proxy *httputil.ReverseProxy, cache *CacheManager) http.Han
 		interceptor.Header().Set("X-Cache", "MISS")
 		proxy.ServeHTTP(interceptor, r)
 
-		log.Printf("Origin response headers: %v", interceptor.Header())
-		cacheDecision(interceptor.statusCode, r, interceptor.Header())
+		shouldCache, timeToCacheFor := cacheDecision(interceptor.statusCode, r, interceptor.Header())
 
-		if (interceptor.statusCode >= 200 && interceptor.statusCode < 300) &&
-			(r.Header.Get("Authorization") == "") && (interceptor.Header().Get("Set-Cookie") == "") {
+		if shouldCache {
 			cacheItem := &CacheItem{
 				responseBody: interceptor.body.Bytes(),
 				headers:      interceptor.Header(),
 				statusCode:   interceptor.statusCode,
-				expiration:   time.Now().Add(5 * time.Minute),
+				expiration:   time.Now().Add(timeToCacheFor),
 			}
 			cache.Set(cacheKey, cacheItem)
 		}

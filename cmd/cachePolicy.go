@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -22,20 +22,39 @@ func parseCacheControl(headers http.Header) map[string]string {
 		}
 	}
 
-	for k, v := range cacheHeaders {
-		fmt.Printf("Key: %s, Value: %s\n", k, v)
-	}
-
 	return cacheHeaders
 }
 
 func ttlFromDirectives(cc map[string]string) time.Duration {
 
+	if value, ok := cc["s-maxage"]; ok {
+		if duration, err := strconv.Atoi(value); err == nil {
+			return time.Duration(duration) * time.Second
+		}
+	} else if value, ok := cc["max-age"]; ok {
+		if duration, err := strconv.Atoi(value); err == nil {
+			return time.Duration(duration) * time.Second
+		}
+	}
 	return 5 * time.Minute
 }
 
 func cacheDecision(statusCode int, req *http.Request, respHeaders http.Header) (bool, time.Duration) {
 
-	parseCacheControl(respHeaders)
-	return true, 5 * time.Minute
+	if (statusCode < 200 || statusCode >= 300) ||
+		(req.Header.Get("Authorization") != "") || (respHeaders.Get("Set-Cookie") != "") {
+		return false, 0
+	}
+
+	cacheMap := parseCacheControl(respHeaders)
+
+	_, noStoreExists := cacheMap["no-store"]
+	_, privateExists := cacheMap["private"]
+	if noStoreExists || privateExists {
+		return false, 0
+	}
+
+	timeToCache := ttlFromDirectives(cacheMap)
+
+	return true, timeToCache
 }

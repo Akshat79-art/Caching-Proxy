@@ -1,6 +1,5 @@
 /*
-Copyright © 2026 Akshat <EMAIL ADDRESS>
-
+Copyright © 2026 Akshat
 */
 package main
 
